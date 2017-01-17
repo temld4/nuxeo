@@ -20,7 +20,12 @@
 package org.nuxeo.ecm.core.api.model.impl;
 
 import java.io.Serializable;
+import java.util.HashMap;
 import java.util.Iterator;
+import java.util.Map;
+import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.nuxeo.common.utils.Path;
 import org.nuxeo.ecm.core.api.PropertyException;
@@ -38,6 +43,10 @@ public abstract class AbstractProperty implements Property {
 
     private static final long serialVersionUID = 1L;
 
+    protected final static Pattern NON_CANON_INDEX = Pattern.compile("[^/\\[\\]]+" // name
+            + "\\[(-?\\d+)\\]" // index in brackets - could be -1 if element is new to list
+    );
+
     /**
      * Whether or not this property is read only.
      */
@@ -51,6 +60,25 @@ public abstract class AbstractProperty implements Property {
     public boolean forceDirty = false;
 
     protected int flags;
+
+    protected static final Map<String, Map<String, String>> DEPRECATED_PROPERTIES = new HashMap<>();
+
+    static {
+        DEPRECATED_PROPERTIES.computeIfAbsent("deprecated", key -> new HashMap<>()).put("scalar", null);
+        DEPRECATED_PROPERTIES.computeIfAbsent("deprecated", key -> new HashMap<>()).put("scalars", null);
+        DEPRECATED_PROPERTIES.computeIfAbsent("deprecated", key -> new HashMap<>()).put("complexDep", null);
+        DEPRECATED_PROPERTIES.computeIfAbsent("deprecated", key -> new HashMap<>()).put("complex/scalar", null);
+        DEPRECATED_PROPERTIES.computeIfAbsent("deprecated", key -> new HashMap<>()).put("scalar2scalar", "scalarfallback");
+        DEPRECATED_PROPERTIES.computeIfAbsent("deprecated", key -> new HashMap<>()).put("scalar2complex", "complexfallback/scalar");
+        DEPRECATED_PROPERTIES.computeIfAbsent("deprecated", key -> new HashMap<>()).put("complex2complex", "complexfallback");
+        DEPRECATED_PROPERTIES.computeIfAbsent("removed", key -> new HashMap<>()).put("scalar", null);
+        DEPRECATED_PROPERTIES.computeIfAbsent("removed", key -> new HashMap<>()).put("complexRem", null);
+        DEPRECATED_PROPERTIES.computeIfAbsent("removed", key -> new HashMap<>()).put("complex/scalar", null);
+        DEPRECATED_PROPERTIES.computeIfAbsent("removed", key -> new HashMap<>()).put("scalar2scalar", "scalarfallback");
+        DEPRECATED_PROPERTIES.computeIfAbsent("removed", key -> new HashMap<>()).put("scalar2complex", "complexfallback/scalar");
+        DEPRECATED_PROPERTIES.computeIfAbsent("removed", key -> new HashMap<>()).put("complex2complex", "complexfallback");
+        DEPRECATED_PROPERTIES.computeIfAbsent("file", key -> new HashMap<>()).put("filename", "content/name");
+    }
 
     protected AbstractProperty(Property parent) {
         this.parent = parent;
@@ -115,7 +143,8 @@ public abstract class AbstractProperty implements Property {
             list.remove(this);
         } else if (!isPhantom()) { // remove from map is easier -> mark the
             // field as removed and remove the value
-            // do not remove the field if the previous value was null, except if its a property from a SimpleDocumentModel (forceDirty mode)
+            // do not remove the field if the previous value was null, except if its a property from a
+            // SimpleDocumentModel (forceDirty mode)
             Serializable previous = internalGetValue();
             init(null);
             if (previous != null || isForceDirty()) {
@@ -403,8 +432,8 @@ public abstract class AbstractProperty implements Property {
         for (int i = start; i < segments.length; i++) {
             String segment = segments[i];
             if (property.isScalar()) {
-                throw new PropertyNotFoundException(path.toString(), "segment " + segment
-                        + " points to a scalar property");
+                throw new PropertyNotFoundException(path.toString(),
+                        "segment " + segment + " points to a scalar property");
             }
             String index = null;
             if (segment.endsWith("]")) {
@@ -413,19 +442,85 @@ public abstract class AbstractProperty implements Property {
                     throw new PropertyNotFoundException(path.toString(), "Parse error: no matching '[' was found");
                 }
                 index = segment.substring(p + 1, segment.length() - 1);
-                segment = segment.substring(0, p);
             }
             if (index == null) {
                 property = property.get(segment);
                 if (property == null) {
-                    throw new PropertyNotFoundException(path.toString(), "segment " + segments[i]
-                            + " cannot be resolved");
+                    throw new PropertyNotFoundException(path.toString(), "segment " + segment + " cannot be resolved");
                 }
             } else {
                 property = property.get(index);
             }
         }
         return property;
+    }
+
+    /**
+     * If input property is marked as dreprecated in {@link SchemaManager) service then wrap it into
+     * {@link DeprecatedProperty}, return the given property otherwise.
+     *
+     * @since 9.1
+     */
+    protected Property wrapDeprecatedPropertyIfNeeded(Property property) {
+        if (property == null || property instanceof DeprecatedProperty) {
+            return property;
+        }
+        Property result = property;
+        String name = result.getPath().substring(1);
+        Map<String, String> deprecatedPropertiesForSchema = DEPRECATED_PROPERTIES.get(
+                getSchema().getName());
+        if (deprecatedPropertiesForSchema != null && deprecatedPropertiesForSchema.containsKey(name)) {
+            String fallback = deprecatedPropertiesForSchema.get(name);
+            if (fallback == null) {
+                result = new DeprecatedProperty(property);
+            } else {
+                result = new DeprecatedProperty(property, resolvePath('/' + fallback));
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Returns the {@link RemovedProperty} if it is a removed property or empty {@link Optional#empty()} otherwise.
+     *
+     * @since 9.1
+     */
+    protected Property computeRemovedProperty(String name) {
+        String schema = getSchema().getName();
+        // name is only the property name we try to get, build its path in order to check it against configuration
+        String originalXpath = collectPath(new Path("/")).append(name).toString().substring(1);
+        String xpath;
+        // replace all something[..] in a path by *, for example files/item[2]/filename -> files/*/filename
+        if (originalXpath.indexOf('[') != -1) {
+            xpath = NON_CANON_INDEX.matcher(originalXpath).replaceAll("*");
+        } else {
+            xpath = originalXpath;
+        }
+        Map<String, String> deprecatedPropertiesForSchema = DEPRECATED_PROPERTIES.get(
+                getSchema().getName());
+        if (deprecatedPropertiesForSchema == null || !deprecatedPropertiesForSchema.containsKey(xpath)) {
+            return null;
+        }
+        String fallback = deprecatedPropertiesForSchema.get(xpath);
+        if (fallback == null) {
+            return new RemovedProperty(this, name);
+        }
+
+        // Retrieve fallback property
+        Matcher matcher = NON_CANON_INDEX.matcher(originalXpath);
+        while (matcher.find()) {
+            fallback = fallback.replaceFirst("\\*", matcher.group(0));
+        }
+        Property fallbackProperty;
+        // Handle creation of complex property in a list ie: xpath contains [-1]
+        int i = fallback.lastIndexOf("[-1]");
+        if (i != -1) {
+            // skip [-1]/ to get next property
+            fallbackProperty = get(fallback.substring(i + 5));
+        } else {
+            fallbackProperty = resolvePath('/' + fallback);
+        }
+        return new RemovedProperty(this, name, fallbackProperty);
     }
 
     @Override
@@ -459,7 +554,7 @@ public abstract class AbstractProperty implements Property {
 
     @Override
     public String toString() {
-        return getClass().getSimpleName() + '(' + getPath() + ')';
+        return getClass().getSimpleName() + '(' + getPath().substring(1) + ')';
     }
 
     @Override

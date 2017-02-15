@@ -124,8 +124,7 @@ public class TestDocumentModelWithRemovedProperty extends NXRuntimeTestCase {
     }
 
     @Test
-    public void testSetScalarOnRemovedComplexProperty() throws Exception {
-        testProperty("complexRem/sclar", "test scalar");
+    public void testSetScalarOnRemovedComplexProperty() {
         DocumentModel doc = new DocumentModelImpl("/", "doc", "File");
         doc.setProperty("removed", "complexRem/scalar", "test scalar");
         assertNull(doc.getProperty("removed", "complexRem/scalar"));
@@ -139,10 +138,8 @@ public class TestDocumentModelWithRemovedProperty extends NXRuntimeTestCase {
     }
 
     @Test
-    public void testSetRemovedScalarOnComplexProperty() {
-        DocumentModel doc = new DocumentModelImpl("/", "doc", "File");
-        doc.setProperty("removed", "complex/scalar", "test scalar");
-        assertNull(doc.getProperty("removed", "complex/scalar"));
+    public void testSetRemovedScalarOnComplexProperty() throws Exception {
+        testProperty("complex/scalar", "test scalar");
     }
 
     @Test

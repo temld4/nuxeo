@@ -20,9 +20,7 @@
 package org.nuxeo.ecm.core.api.model.impl;
 
 import java.io.Serializable;
-import java.util.HashMap;
 import java.util.Iterator;
-import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -36,8 +34,10 @@ import org.nuxeo.ecm.core.api.model.PropertyNotFoundException;
 import org.nuxeo.ecm.core.api.model.ReadOnlyPropertyException;
 import org.nuxeo.ecm.core.api.model.resolver.PropertyObjectResolver;
 import org.nuxeo.ecm.core.api.model.resolver.PropertyObjectResolverImpl;
+import org.nuxeo.ecm.core.schema.SchemaManager;
 import org.nuxeo.ecm.core.schema.types.Schema;
 import org.nuxeo.ecm.core.schema.types.resolver.ObjectResolver;
+import org.nuxeo.runtime.api.Framework;
 
 public abstract class AbstractProperty implements Property {
 
@@ -60,25 +60,6 @@ public abstract class AbstractProperty implements Property {
     public boolean forceDirty = false;
 
     protected int flags;
-
-    protected static final Map<String, Map<String, String>> DEPRECATED_PROPERTIES = new HashMap<>();
-
-    static {
-        DEPRECATED_PROPERTIES.computeIfAbsent("deprecated", key -> new HashMap<>()).put("scalar", null);
-        DEPRECATED_PROPERTIES.computeIfAbsent("deprecated", key -> new HashMap<>()).put("scalars", null);
-        DEPRECATED_PROPERTIES.computeIfAbsent("deprecated", key -> new HashMap<>()).put("complexDep", null);
-        DEPRECATED_PROPERTIES.computeIfAbsent("deprecated", key -> new HashMap<>()).put("complex/scalar", null);
-        DEPRECATED_PROPERTIES.computeIfAbsent("deprecated", key -> new HashMap<>()).put("scalar2scalar", "scalarfallback");
-        DEPRECATED_PROPERTIES.computeIfAbsent("deprecated", key -> new HashMap<>()).put("scalar2complex", "complexfallback/scalar");
-        DEPRECATED_PROPERTIES.computeIfAbsent("deprecated", key -> new HashMap<>()).put("complex2complex", "complexfallback");
-        DEPRECATED_PROPERTIES.computeIfAbsent("removed", key -> new HashMap<>()).put("scalar", null);
-        DEPRECATED_PROPERTIES.computeIfAbsent("removed", key -> new HashMap<>()).put("complexRem", null);
-        DEPRECATED_PROPERTIES.computeIfAbsent("removed", key -> new HashMap<>()).put("complex/scalar", null);
-        DEPRECATED_PROPERTIES.computeIfAbsent("removed", key -> new HashMap<>()).put("scalar2scalar", "scalarfallback");
-        DEPRECATED_PROPERTIES.computeIfAbsent("removed", key -> new HashMap<>()).put("scalar2complex", "complexfallback/scalar");
-        DEPRECATED_PROPERTIES.computeIfAbsent("removed", key -> new HashMap<>()).put("complex2complex", "complexfallback");
-        DEPRECATED_PROPERTIES.computeIfAbsent("file", key -> new HashMap<>()).put("filename", "content/name");
-    }
 
     protected AbstractProperty(Property parent) {
         this.parent = parent;
@@ -465,19 +446,17 @@ public abstract class AbstractProperty implements Property {
         if (property == null || property instanceof DeprecatedProperty) {
             return property;
         }
-        Property result = property;
-        String name = result.getPath().substring(1);
-        Map<String, String> deprecatedPropertiesForSchema = DEPRECATED_PROPERTIES.get(
-                getSchema().getName());
-        if (deprecatedPropertiesForSchema != null && deprecatedPropertiesForSchema.containsKey(name)) {
-            String fallback = deprecatedPropertiesForSchema.get(name);
-            if (fallback == null) {
-                result = new DeprecatedProperty(property);
-            } else {
-                result = new DeprecatedProperty(property, resolvePath('/' + fallback));
-            }
+        String name = property.getPath().substring(1);
+        String schema = getSchema().getName();
+        SchemaManager schemaManager = Framework.getService(SchemaManager.class);
+        if (!schemaManager.isPropertyDeprecated(schema, name)) {
+            return property;
         }
-        return result;
+        String fallback = schemaManager.getDeprecatedPropertyFallback(schema, name);
+        if (fallback == null) {
+            return new DeprecatedProperty(property);
+        }
+        return new DeprecatedProperty(property, resolvePath('/' + fallback));
     }
 
     /**
@@ -496,12 +475,11 @@ public abstract class AbstractProperty implements Property {
         } else {
             xpath = originalXpath;
         }
-        Map<String, String> deprecatedPropertiesForSchema = DEPRECATED_PROPERTIES.get(
-                getSchema().getName());
-        if (deprecatedPropertiesForSchema == null || !deprecatedPropertiesForSchema.containsKey(xpath)) {
+        SchemaManager schemaManager = Framework.getService(SchemaManager.class);
+        if (!schemaManager.isPropertyRemoved(schema, xpath)) {
             return null;
         }
-        String fallback = deprecatedPropertiesForSchema.get(xpath);
+        String fallback = schemaManager.getRemovedPropertyFallback(schema, xpath);
         if (fallback == null) {
             return new RemovedProperty(this, name);
         }

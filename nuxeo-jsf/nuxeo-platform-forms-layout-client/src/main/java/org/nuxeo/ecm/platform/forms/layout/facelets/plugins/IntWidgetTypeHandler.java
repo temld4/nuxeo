@@ -21,7 +21,7 @@ package org.nuxeo.ecm.platform.forms.layout.facelets.plugins;
 
 import javax.faces.component.html.HtmlInputText;
 import javax.faces.component.html.HtmlOutputText;
-import javax.faces.convert.NumberConverter;
+import javax.faces.convert.IntegerConverter;
 import javax.faces.view.facelets.ComponentHandler;
 import javax.faces.view.facelets.CompositeFaceletHandler;
 import javax.faces.view.facelets.ConverterConfig;
@@ -40,7 +40,6 @@ import org.nuxeo.ecm.platform.ui.web.component.seam.UIHtmlText;
 import org.nuxeo.ecm.platform.ui.web.tag.handler.TagConfigFactory;
 
 import com.sun.faces.facelets.tag.TagAttributesImpl;
-import com.sun.faces.facelets.tag.jsf.core.ConvertNumberHandler;
 
 /**
  * Int widget.
@@ -69,10 +68,9 @@ public class IntWidgetTypeHandler extends AbstractWidgetTypeHandler {
         FaceletHandler leaf = getNextHandler(ctx, tagConfig, widget, subHandlers, helper);
         if (BuiltinWidgetModes.EDIT.equals(mode)) {
             ConverterConfig convertConfig = TagConfigFactory.createConverterConfig(tagConfig, widget.getTagConfigId(),
-                    new TagAttributesImpl(new TagAttribute[0]), leaf, NumberConverter.CONVERTER_ID);
-            ConverterHandler convert = new ConvertNumberHandler(convertConfig);
-            FaceletHandler nextHandler = new CompositeFaceletHandler(new FaceletHandler[] { convert, leaf });
-            ComponentHandler input = helper.getHtmlComponentHandler(widgetTagConfigId, attributes, nextHandler,
+                    new TagAttributesImpl(new TagAttribute[0]), leaf, IntegerConverter.CONVERTER_ID);
+            ConverterHandler convert = new ConverterHandler(convertConfig);
+            ComponentHandler input = helper.getHtmlComponentHandler(widgetTagConfigId, attributes, convert,
                     HtmlInputText.COMPONENT_TYPE, null);
             String msgId = helper.generateMessageId(widgetName);
             ComponentHandler message = helper.getMessageComponentHandler(widgetTagConfigId, msgId, widgetId, null);
@@ -87,8 +85,8 @@ public class IntWidgetTypeHandler extends AbstractWidgetTypeHandler {
         } else {
             // default on text with int converter for other modes
             ConverterConfig convertConfig = TagConfigFactory.createConverterConfig(tagConfig, widget.getTagConfigId(),
-                    new TagAttributesImpl(new TagAttribute[0]), leaf, NumberConverter.CONVERTER_ID);
-            ConverterHandler convert = new ConvertNumberHandler(convertConfig);
+                    new TagAttributesImpl(new TagAttribute[0]), leaf, IntegerConverter.CONVERTER_ID);
+            ConverterHandler convert = new ConverterHandler(convertConfig);
             ComponentHandler output = helper.getHtmlComponentHandler(widgetTagConfigId, attributes, convert,
                     HtmlOutputText.COMPONENT_TYPE, null);
             if (BuiltinWidgetModes.PDF.equals(mode)) {

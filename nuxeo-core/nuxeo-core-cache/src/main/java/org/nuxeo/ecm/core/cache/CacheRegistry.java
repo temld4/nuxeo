@@ -138,6 +138,12 @@ public final class CacheRegistry extends ContributionFragmentRegistry<CacheDescr
         started = true;
     }
 
+    public void invalidateAll() {
+        for (CacheDescriptor desc : caches.values()) {
+            desc.cache.invalidateAll();
+        }
+    }
+
     public void stop() {
         RuntimeException errors = new RuntimeException("Cannot stop caches, check suppressed error");
         for (CacheDescriptor desc : caches.values()) {

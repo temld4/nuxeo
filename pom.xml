@@ -221,7 +221,7 @@
     <sonar.host.url>https://sonar.nuxeo.org/</sonar.host.url>
     <sonar.dynamicAnalysis>reuseReports</sonar.dynamicAnalysis>
     <it.jacoco.destFile>${java.io.tmpdir}/jacoco-it.dump</it.jacoco.destFile>
-    <sonar.jacoco.itReportPath>${it.jacoco.destFile}</sonar.jacoco.itReportPath>
+    <sonar.jacoco.reportPaths>${it.jacoco.destFile}</sonar.jacoco.reportPaths>
 
     <!-- MongoDB -->
     <mongo.java.driver.version>3.3.0</mongo.java.driver.version>
@@ -4907,7 +4907,7 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <configuration>
-          <argLine>-Xmx1g -Dfile.encoding=UTF-8 ${it.failsafe.argLine}</argLine>
+          <argLine>-Xmx1g -Dfile.encoding=UTF-8 @{it.failsafe.argLine}</argLine>
           <skipTests>${skip.surefire.tests}</skipTests>
           <systemPropertyVariables>
             <net.sourceforge.cobertura.datafile>
@@ -5255,7 +5255,7 @@
         <plugin>
           <groupId>org.jacoco</groupId>
           <artifactId>jacoco-maven-plugin</artifactId>
-          <version>0.6.4.201312101107</version>
+          <version>0.7.9</version>
           <configuration>
             <propertyName>it.failsafe.argLine</propertyName>
             <destFile>${it.jacoco.destFile}</destFile>
@@ -5263,6 +5263,7 @@
           </configuration>
           <executions>
             <execution>
+              <id>prepare-agent</id>
               <goals>
                 <goal>prepare-agent</goal>
               </goals>

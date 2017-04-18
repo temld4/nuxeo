@@ -51,7 +51,7 @@ public abstract class ManagementTestCase extends NXRuntimeTestCase {
         deployContrib(OSGI_BUNDLE_NAME, "OSGI-INF/management-resource-publisher-service.xml");
         deployTestContrib(OSGI_BUNDLE_NAME, "isolated-server.xml");
 
-        fireFrameworkStarted();
+        resume();
 
         locatorService = (ServerLocatorService) Framework.getLocalService(ServerLocator.class);
         publisherService = (ResourcePublisherService) Framework.getLocalService(ResourcePublisher.class);

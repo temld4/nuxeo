@@ -45,7 +45,7 @@ public class TestContributionPersistence extends NXRuntimeTestCase {
         super.setUp();
         deployContrib("org.nuxeo.runtime.test.tests", "BaseXPoint.xml");
 
-        fireFrameworkStarted();
+        resume();
 
         mgr = Framework.getLocalService(ContributionPersistenceManager.class);
     }

@@ -1,5 +1,5 @@
 /*
- * (C) Copyright 2006-2015 Nuxeo SA (http://nuxeo.com/) and others.
+ * (C) Copyright 2017 Nuxeo SA (http://nuxeo.com/) and others.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,24 +13,24 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Contributors:
- *     Thierry Delprat
  */
-package org.nuxeo.ecm.platform.audit.service;
+package org.nuxeo.ecm.core.management.standby;
 
-import org.nuxeo.ecm.platform.audit.api.Logs;
+import javax.management.MXBean;
 
 /**
- * Audit Backend SPI
  *
- * @author tiry
+ * Allow administrators to toggle runtime standby mode.
+ *
+ * @since 9.2
  */
-public interface AuditBackend extends Logs {
+@MXBean
+public interface StandbyMXBean {
 
-    int getApplicationStartedOrder();
+    public static final String NAME = "org.nuxeo:name=org.nuxeo.ecm.core.management.standby,type=service";
 
-    void onApplicationStarted();
+    void toggle();
 
-    void onStandby();
+    boolean isStandby();
 
 }

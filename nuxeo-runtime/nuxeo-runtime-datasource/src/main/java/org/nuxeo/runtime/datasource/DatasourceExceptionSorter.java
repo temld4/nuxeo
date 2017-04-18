@@ -160,6 +160,10 @@ public class DatasourceExceptionSorter implements ExceptionSorter {
 
         final Map<String, Configuration> actuals = new HashMap<>();
 
+        void clear() {
+            actuals.clear();
+        }
+
         @Override
         public String getContributionId(Configuration contrib) {
             return contrib.id;

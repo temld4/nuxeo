@@ -59,7 +59,7 @@ public abstract class SQLBackendTestCase extends NXRuntimeTestCase {
         deployBundle("org.nuxeo.ecm.platform.el");
         DatabaseHelper.DATABASE.setUp();
         deployTestContrib("org.nuxeo.ecm.core.storage", "OSGI-INF/test-repo-ds.xml");
-        fireFrameworkStarted();
+        resume();
         repository = newRepository(-1);
     }
 

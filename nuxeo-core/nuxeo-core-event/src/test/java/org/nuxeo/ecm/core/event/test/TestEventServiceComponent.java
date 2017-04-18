@@ -52,7 +52,7 @@ public class TestEventServiceComponent extends NXRuntimeTestCase {
         Framework.getProperties().setProperty(PostCommitEventExecutor.TIMEOUT_MS_PROP, "300"); // 0.3s
         deployBundle("org.nuxeo.runtime.jtajca");
         deployBundle("org.nuxeo.ecm.core.event");
-        fireFrameworkStarted();
+        resume();
         // 2 quartz threads launched by the event contribs above
         Thread.sleep(100);
         initialThreadCount = Thread.activeCount();

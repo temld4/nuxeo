@@ -60,7 +60,7 @@ public class TestThemeStylingService extends NXRuntimeTestCase {
         deployContrib("org.nuxeo.theme.styling.tests", "theme-styling-test-addon-config.xml");
 
         // force application start
-        fireFrameworkStarted();
+        resume();
 
         service = Framework.getService(ThemeStylingService.class);
         assertNotNull(service);

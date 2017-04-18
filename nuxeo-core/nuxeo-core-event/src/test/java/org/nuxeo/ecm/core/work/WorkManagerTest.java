@@ -120,7 +120,7 @@ public class WorkManagerTest extends NXRuntimeTestCase {
 
     protected void deployAndStart() throws Exception {
         doDeploy();
-        fireFrameworkStarted();
+        resume();
         assertMetrics(0, 0, 0, 0);
     }
 
@@ -288,7 +288,7 @@ public class WorkManagerTest extends NXRuntimeTestCase {
         // before first applicationStarted:
         // disable SleepWork queue
         deployContrib("org.nuxeo.ecm.core.event.test", "test-workmanager-disablequeue.xml");
-        fireFrameworkStarted();
+        resume();
 
         assertTrue(service.isProcessingEnabled("default"));
         assertFalse(service.isProcessingEnabled("SleepWork"));
@@ -308,7 +308,7 @@ public class WorkManagerTest extends NXRuntimeTestCase {
     public void testWorkManagerConfigDisableAllBeforeStart() throws Exception {
         doDeploy();
         deployContrib("org.nuxeo.ecm.core.event.test", "test-workmanager-disablequeue1.xml");
-        fireFrameworkStarted();
+        resume();
 
         assertFalse(service.isProcessingEnabled("default"));
         assertTrue(service.isProcessingEnabled("SleepWork"));

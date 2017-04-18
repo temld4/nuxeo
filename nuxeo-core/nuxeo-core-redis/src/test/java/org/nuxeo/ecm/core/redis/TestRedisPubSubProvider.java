@@ -57,7 +57,7 @@ public class TestRedisPubSubProvider extends NXRuntimeTestCase {
         deployBundle("org.nuxeo.ecm.core.event");
         deployContrib("org.nuxeo.ecm.core.redis.tests", "test-redis-pubsub-contrib.xml");
         pubSubService = Framework.getService(PubSubService.class);
-        fireFrameworkStarted();
+        resume();
     }
 
     @Test

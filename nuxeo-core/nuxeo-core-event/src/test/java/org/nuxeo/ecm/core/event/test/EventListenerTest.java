@@ -54,7 +54,7 @@ public class EventListenerTest extends NXRuntimeTestCase {
     public void setUp() throws Exception {
         super.setUp();
         deployBundle("org.nuxeo.ecm.core.event");
-        fireFrameworkStarted();
+        resume();
     }
 
     @Test

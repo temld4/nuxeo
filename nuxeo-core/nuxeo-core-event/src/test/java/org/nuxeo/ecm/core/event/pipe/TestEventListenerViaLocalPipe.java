@@ -52,7 +52,7 @@ public class TestEventListenerViaLocalPipe extends TestEventServiceComponent {
         URL url = EventListenerTest.class.getClassLoader().getResource("test-LocalPipes.xml");
         deployTestContrib("org.nuxeo.ecm.core.event.test", url);
 
-        fireFrameworkStarted();
+        resume();
         // 2 quartz threads launched by the event contribs above
         Thread.sleep(100);
         initialThreadCount = Thread.activeCount();

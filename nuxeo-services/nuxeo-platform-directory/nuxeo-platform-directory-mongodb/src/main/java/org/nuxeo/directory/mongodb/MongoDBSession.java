@@ -25,6 +25,7 @@ import static org.nuxeo.directory.mongodb.MongoDBSerializationHelper.MONGODB_SEQ
 
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedList;
@@ -47,6 +48,9 @@ import org.nuxeo.ecm.core.api.impl.DocumentModelListImpl;
 import org.nuxeo.ecm.core.api.model.Property;
 import org.nuxeo.ecm.core.api.security.SecurityConstants;
 import org.nuxeo.ecm.core.schema.types.Field;
+import org.nuxeo.ecm.core.schema.types.Type;
+import org.nuxeo.ecm.core.schema.types.primitives.IntegerType;
+import org.nuxeo.ecm.core.schema.types.primitives.LongType;
 import org.nuxeo.ecm.directory.BaseSession;
 import org.nuxeo.ecm.directory.DirectoryException;
 import org.nuxeo.ecm.directory.EntrySource;
@@ -84,7 +88,7 @@ public class MongoDBSession extends BaseSession implements EntrySource {
     protected SubstringMatchType substringMatchType;
 
     protected String countersCollectionName;
-    
+
     protected final Map<String, Field> schemaFieldMap;
 
     protected final String passwordHashAlgorithm;
@@ -101,7 +105,7 @@ public class MongoDBSession extends BaseSession implements EntrySource {
         schemaName = directory.getSchema();
         substringMatchType = desc.getSubstringMatchType();
         schemaFieldMap = directory.getSchemaFieldMap();
-        autoincrementId = desc.isAutoincrementIdField(); 
+        autoincrementId = desc.isAutoincrementIdField();
         passwordHashAlgorithm = desc.passwordHashAlgorithm;
     }
 
@@ -133,7 +137,16 @@ public class MongoDBSession extends BaseSession implements EntrySource {
 
     @Override
     public DocumentModel createEntry(Map<String, Object> fieldMap) throws DirectoryException {
+
+        // Filter out reference fields for creation as we keep it in a different collection
+        Map<String, Object> newDocMap = fieldMap.entrySet()
+                                                .stream()
+                                                .filter(entry -> getDirectory().getReferences(entry.getKey()) == null)
+                                                .collect(HashMap::new, (m, v) -> m.put(v.getKey(), v.getValue()),
+                                                        HashMap::putAll);
+
         checkPermission(SecurityConstants.WRITE);
+        String idFieldName = schemaFieldMap.get(getIdField()).getName().getPrefixedName();
         String id;
         if (autoincrementId) {
             Document filter = MongoDBSerializationHelper.fieldMapToBson(MONGODB_ID, directoryName);
@@ -141,29 +154,26 @@ public class MongoDBSession extends BaseSession implements EntrySource {
             FindOneAndUpdateOptions options = new FindOneAndUpdateOptions().returnDocument(ReturnDocument.AFTER);
             Long longId = getCollection(countersCollectionName).findOneAndUpdate(filter, update, options)
                                                                .getLong(MONGODB_SEQ);
-            fieldMap.put(getIdField(), longId);
+            newDocMap.put(idFieldName, longId);
             id = String.valueOf(longId);
         } else {
-            id = String.valueOf(fieldMap.get(getIdField()));
+            id = String.valueOf(fieldMap.get(idFieldName));
             if (hasEntry(id)) {
                 throw new DirectoryException(String.format("Entry with id %s already exists", id));
             }
         }
-        if (fieldMap.get(getPasswordField()) != null) {
-            String password = (String) fieldMap.get(getPasswordField());
-            password = PasswordHelper.hashPassword(password, passwordHashAlgorithm);
-            fieldMap.put(getPasswordField(), password);
-        }
         try {
-            Document bson = MongoDBSerializationHelper.fieldMapToBson(fieldMap);
+            Document bson = MongoDBSerializationHelper.fieldMapToBson(newDocMap);
+            String password = (String) newDocMap.get(getPasswordField());
+            if (password != null && !PasswordHelper.isHashed(password)) {
+                password = PasswordHelper.hashPassword(password, passwordHashAlgorithm);
+                bson.append(getPasswordField(), password);
+            }
             getCollection().insertOne(bson);
 
             DocumentModel docModel = BaseSession.createEntryModel(null, schemaName, id, fieldMap, isReadOnly());
 
             // Add references fields
-            Field schemaIdField = schemaFieldMap.get(getIdField());
-            String idFieldName = schemaIdField.getName().getPrefixedName();
-
             String sourceId = docModel.getId();
             for (Reference reference : getDirectory().getReferences()) {
                 String referenceFieldName = schemaFieldMap.get(reference.getFieldName()).getName().getPrefixedName();
@@ -198,6 +208,9 @@ public class MongoDBSession extends BaseSession implements EntrySource {
         List<String> referenceFieldList = new LinkedList<>();
 
         for (String fieldName : schemaFieldMap.keySet()) {
+            if (fieldName.equals(getIdField())) {
+                continue;
+            }
             Property prop = docModel.getPropertyObject(schemaName, fieldName);
             if (fieldName.equals(getPasswordField()) && StringUtils.isEmpty((String) prop.getValue())) {
                 continue;
@@ -207,6 +220,9 @@ public class MongoDBSession extends BaseSession implements EntrySource {
                 if (fieldName.equals(getPasswordField())) {
                     value = PasswordHelper.hashPassword((String) value, passwordHashAlgorithm);
                 }
+                if (value instanceof Calendar) {
+                    value = ((Calendar) value).getTime();
+                }
                 fieldMap.put(prop.getName(), value);
             }
             if (getDirectory().isReference(fieldName)) {
@@ -214,8 +230,9 @@ public class MongoDBSession extends BaseSession implements EntrySource {
             }
         }
 
+        String idFieldName = schemaFieldMap.get(getIdField()).getName().getPrefixedName();
         String id = docModel.getId();
-        Document bson = MongoDBSerializationHelper.fieldMapToBson(getIdField(), id);
+        Document bson = MongoDBSerializationHelper.fieldMapToBson(idFieldName, id);
 
         List<Bson> updates = fieldMap.entrySet().stream().map(e -> Updates.set(e.getKey(), e.getValue())).collect(
                 Collectors.toList());
@@ -278,8 +295,8 @@ public class MongoDBSession extends BaseSession implements EntrySource {
         }
 
         try {
-            DeleteResult result = getCollection().deleteOne(
-                    MongoDBSerializationHelper.fieldMapToBson(getIdField(), id));
+            String idFieldName = schemaFieldMap.get(getIdField()).getName().getPrefixedName();
+            DeleteResult result = getCollection().deleteOne(MongoDBSerializationHelper.fieldMapToBson(idFieldName, id));
             if (!result.wasAcknowledged()) {
                 throw new DirectoryException(
                         "Error while deleting the entry, the request has not been acknowledged by the server");
@@ -322,6 +339,8 @@ public class MongoDBSession extends BaseSession implements EntrySource {
     public DocumentModelList query(Map<String, Serializable> filter, Set<String> fulltext, Map<String, String> orderBy,
             boolean fetchReferences, int limit, int offset) throws DirectoryException {
 
+        // Remove password as it is not possible to do queries with it
+        filter.remove(getPasswordField());
         Document bson = buildQuery(filter, fulltext);
 
         DocumentModelList entries = new DocumentModelListImpl();
@@ -334,6 +353,10 @@ public class MongoDBSession extends BaseSession implements EntrySource {
 
             // Cast object to document model
             Map<String, Object> fieldMap = MongoDBSerializationHelper.bsonToFieldMap(resultDoc);
+            // Remove password from results
+            if (!readAllColumns) {
+                fieldMap.remove(getPasswordField());
+            }
             DocumentModel doc = fieldMapToDocumentModel(fieldMap);
 
             if (fetchReferences) {
@@ -375,10 +398,34 @@ public class MongoDBSession extends BaseSession implements EntrySource {
 
         Document bson = new Document();
         for (Map.Entry<String, Serializable> entry : fieldMap.entrySet()) {
-            Object value = MongoDBSerializationHelper.valueToBson(entry.getValue());
+            Field field = schemaFieldMap.entrySet()
+                                        .stream()
+                                        .filter(e -> e.getValue().getName().getPrefixedName().equals(entry.getKey()))
+                                        .map(Map.Entry::getValue)
+                                        .findFirst()
+                                        .orElse(null);
+            Object value = null;
+            if (field != null) {
+                Type type = field.getType();
+                if (entry.getValue() instanceof String) {
+                    String originalValue = (String) entry.getValue();
+                    if (type instanceof IntegerType) {
+                        value = Integer.valueOf(originalValue);
+                    }
+                    else if (type instanceof LongType) {
+                        value = Long.valueOf(originalValue);
+                    }
+                    else {
+                        value = MongoDBSerializationHelper.valueToBson(entry.getValue());
+                    }
+                }
+            }
+            else {
+                value = MongoDBSerializationHelper.valueToBson(entry.getValue());
+            }
             if (value != null) {
                 String key = entry.getKey();
-                if (fulltext.contains(key)) {
+                if (fulltext != null && fulltext.contains(key)) {
                     String val = String.valueOf(value);
                     switch (substringMatchType) {
                     case subany:
@@ -430,8 +477,16 @@ public class MongoDBSession extends BaseSession implements EntrySource {
     @Override
     public boolean authenticate(String username, String password) throws DirectoryException {
         Document user = getCollection().find(MongoDBSerializationHelper.fieldMapToBson(getIdField(), username)).first();
+        if (user == null) {
+            return false;
+        }
         String storedPassword = user.getString(getPasswordField());
         return PasswordHelper.verifyPassword(password, storedPassword);
+    }
+
+    @Override
+    public boolean isAuthenticating() {
+        return schemaFieldMap.containsKey(getPasswordField());
     }
 
     @Override
@@ -446,7 +501,8 @@ public class MongoDBSession extends BaseSession implements EntrySource {
 
     @Override
     public DocumentModel getEntryFromSource(String id, boolean fetchReferences) throws DirectoryException {
-        DocumentModelList result = query(Collections.singletonMap(getIdField(), id), Collections.emptySet(),
+        String idFieldName = schemaFieldMap.get(getIdField()).getName().getPrefixedName();
+        DocumentModelList result = query(Collections.singletonMap(idFieldName, id), Collections.emptySet(),
                 Collections.emptyMap(), fetchReferences, 1, -1);
         return result.isEmpty() ? null : result.get(0);
     }
@@ -481,9 +537,12 @@ public class MongoDBSession extends BaseSession implements EntrySource {
     }
 
     protected DocumentModel fieldMapToDocumentModel(Map<String, Object> fieldMap) {
-        String id = String.valueOf(fieldMap.get(getIdField()));
-        DocumentModel docModel = BaseSession.createEntryModel(null, schemaName, id, fieldMap, isReadOnly());
-        return docModel;
+        String idFieldName = schemaFieldMap.get(getIdField()).getName().getPrefixedName();
+        if (!fieldMap.containsKey(idFieldName)) {
+            idFieldName = getIdField();
+        }
+        String id = String.valueOf(fieldMap.get(idFieldName));
+        return createEntryModel(null, schemaName, id, fieldMap, isReadOnly());
     }
 
 }

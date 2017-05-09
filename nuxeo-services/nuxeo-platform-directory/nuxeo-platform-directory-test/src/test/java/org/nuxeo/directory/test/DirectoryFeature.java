@@ -22,7 +22,6 @@ package org.nuxeo.directory.test;
 
 import com.google.inject.Binder;
 import com.google.inject.name.Names;
-import org.junit.runners.model.FrameworkMethod;
 import org.nuxeo.ecm.core.api.DocumentModel;
 import org.nuxeo.ecm.core.api.NuxeoException;
 import org.nuxeo.ecm.core.api.SystemPrincipal;
@@ -57,7 +56,7 @@ import java.util.stream.Collectors;
 @Features({ CoreFeature.class, ClientLoginFeature.class })
 @RepositoryConfig(cleanup = Granularity.METHOD)
 @Deploy({ "org.nuxeo.ecm.directory.api", "org.nuxeo.ecm.directory", "org.nuxeo.ecm.core.schema",
-        "org.nuxeo.ecm.directory.types.contrib", })
+        "org.nuxeo.ecm.directory.types.contrib", "org.nuxeo.ecm.directory.sql", "org.nuxeo.directory.mongodb" })
 public class DirectoryFeature extends SimpleFeature {
 
     public static final String USER_DIRECTORY_NAME = "userDirectory";
@@ -71,10 +70,6 @@ public class DirectoryFeature extends SimpleFeature {
     protected Granularity granularity;
 
     protected Map<String, Map<String, Map<String, Object>>> allDirectoryData;
-
-    protected String testBundle;
-
-    protected DirectoryService directoryService;
 
     @Override
     public void beforeRun(FeaturesRunner runner) throws Exception {
@@ -93,7 +88,7 @@ public class DirectoryFeature extends SimpleFeature {
         directoryConfiguration = new DirectoryConfiguration(coreFeature.getStorageConfiguration());
         directoryConfiguration.init();
         try {
-            testBundle = directoryConfiguration.deployBundles(runner);
+            directoryConfiguration.deployContrib(runner);
         } catch (Exception e) {
             throw new NuxeoException(e);
         }
@@ -101,32 +96,36 @@ public class DirectoryFeature extends SimpleFeature {
 
     @Override
     public void beforeSetup(FeaturesRunner runner) throws Exception {
-        directoryService = Framework.getService(DirectoryService.class);
-    }
-
-    @Override
-    public void beforeMethodRun(FeaturesRunner runner, FrameworkMethod method, Object test) throws Exception {
         if (granularity != Granularity.METHOD) {
             return;
         }
         // record all directories in their entirety
         allDirectoryData = new HashMap<>();
-        for (Directory dir : directoryService.getDirectories()) {
-            if (dir.isReadOnly()) {
-                continue;
+        DirectoryService directoryService = Framework.getService(DirectoryService.class);
+
+        // system user to bypass directory security
+        LoginStack loginStack = ClientLoginModule.getThreadLocalLogin();
+        loginStack.push(new SystemPrincipal(null), null, null);
+        try {
+            for (Directory dir : directoryService.getDirectories()) {
+                if (dir.isReadOnly()) {
+                    continue;
+                }
+                try (Session session = dir.getSession()) {
+                    session.setReadAllColumns(true); // needs to fetch the password too
+                    List<DocumentModel> entries = session.query(Collections.emptyMap(), Collections.emptySet(),
+                            Collections.emptyMap(), true); // fetch references
+                    Map<String, Map<String, Object>> data = entries.stream().collect(
+                            Collectors.toMap(DocumentModel::getId, entry -> entry.getProperties(dir.getSchema())));
+                    allDirectoryData.put(dir.getName(), data);
+                }
             }
-            try (Session session = dir.getSession()) {
-                session.setReadAllColumns(true); // needs to fetch the password too
-                List<DocumentModel> entries = session.query(Collections.emptyMap(), Collections.emptySet(),
-                        Collections.emptyMap(), true); // fetch references
-                Map<String, Map<String, Object>> data = entries.stream().collect(
-                        Collectors.toMap(DocumentModel::getId, entry -> entry.getProperties(dir.getSchema())));
-                allDirectoryData.put(dir.getName(), data);
+            if (TransactionHelper.isTransactionActiveOrMarkedRollback()) {
+                TransactionHelper.commitOrRollbackTransaction();
+                TransactionHelper.startTransaction();
             }
-        }
-        if (TransactionHelper.isTransactionActiveOrMarkedRollback()) {
-            TransactionHelper.commitOrRollbackTransaction();
-            TransactionHelper.startTransaction();
+        } finally {
+            loginStack.pop();
         }
     }
 
@@ -140,9 +139,9 @@ public class DirectoryFeature extends SimpleFeature {
             return;
         }
         // system user to bypass directory security
-        // system user to bypass directory security
         LoginStack loginStack = ClientLoginModule.getThreadLocalLogin();
         loginStack.push(new SystemPrincipal(null), null, null);
+        DirectoryService directoryService = Framework.getService(DirectoryService.class);
         try {
             // clear all directories
             boolean isAllClear;
@@ -189,13 +188,9 @@ public class DirectoryFeature extends SimpleFeature {
         allDirectoryData = null;
     }
 
-    protected String getTestBundleName() {
-        return testBundle;
-    }
-
     protected void bindDirectory(Binder binder, final String name) {
         binder.bind(Directory.class).annotatedWith(Names.named(name)).toProvider(
-                () -> directoryService.getDirectory(name));
+                () -> Framework.getService(DirectoryService.class).getDirectory(name));
     }
 
 }

@@ -27,6 +27,7 @@ import org.nuxeo.runtime.test.runner.FeaturesRunner;
 import org.nuxeo.runtime.test.runner.RuntimeFeature;
 import org.nuxeo.runtime.test.runner.RuntimeHarness;
 
+
 /**
  * Description of the specific capabilities of a directory for tests, and helper methods.
  *
@@ -54,31 +55,28 @@ public class DirectoryConfiguration {
                 storageConfiguration.getCoreType());
     }
 
-    public String deployBundles(FeaturesRunner runner) throws Exception {
-        String bundleName = null;
+    public void deployContrib(FeaturesRunner runner) throws Exception {
+        String contribName = null;
         switch (directoryType) {
         case DIRECTORY_VCS:
-            bundleName = "org.nuxeo.ecm.directory.sql";
+            contribName = "OSGI-INF/test-directory-sql-contrib.xml";
             break;
         case DIRECTORY_MONGODB:
-            bundleName = "org.nuxeo.directory.mongodb";
+            contribName = "OSGI-INF/test-directory-mongodb-contrib.xml";
             break;
         case DIRECTORY_LDAP:
-            bundleName = "org.nuxeo.ecm.directory.ldap";
+            contribName = "org.nuxeo.ecm.directory.ldap";
             break;
         case DIRECTORY_MULTI:
-            bundleName = "org.nuxeo.ecm.directory.multi";
+            contribName = "org.nuxeo.ecm.directory.multi";
             break;
         default:
             break;
         }
-        String testBundleName = bundleName + ".tests";
 
         RuntimeHarness harness = runner.getFeature(RuntimeFeature.class).getHarness();
-        harness.deployBundle(bundleName);
-        harness.deployBundle(testBundleName);
+        harness.deployContrib("org.nuxeo.ecm.directory.tests",contribName);
 
-        return testBundleName;
     }
 
     public void init() {
@@ -100,8 +98,10 @@ public class DirectoryConfiguration {
     }
 
     protected void initMongoDB() {
-        String server = storageConfiguration.getMongoDBServer();
-        String dbname = storageConfiguration.getMongoDBDbName();
+        String server = StorageConfiguration.defaultSystemProperty("nuxeo.test.mongodb.server",
+                storageConfiguration.getMongoDBServer());
+        String dbname = StorageConfiguration.defaultSystemProperty("nuxeo.test.mongodb.dbname",
+                storageConfiguration.getMongoDBDbName());
         MongoClient mongoClient = MongoDBConnectionHelper.newMongoClient(server);
         try {
             MongoDBConnectionHelper.getCollection(mongoClient, dbname, "userDirectory").drop();
